@@ -1,8 +1,11 @@
 {
   "version": 2,
-  "dgSpecHash": "ZdPm8I/Rg9E=",
+  "dgSpecHash": "+3mHwxSWyho=",
   "success": true,
   "projectFilePath": "D:\\Documents\\Coding\\CSharp\\BatteryTracker\\BatteryTracker.csproj",
-  "expectedPackageFiles": [],
+  "expectedPackageFiles": [
+    "C:\\Users\\Zip\\.nuget\\packages\\hidlibrary\\3.3.40\\hidlibrary.3.3.40.nupkg.sha512",
+    "C:\\Users\\Zip\\.nuget\\packages\\hidsharp\\2.6.4\\hidsharp.2.6.4.nupkg.sha512"
+  ],
   "logs": []
 }

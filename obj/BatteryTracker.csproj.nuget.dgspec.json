@@ -45,6 +45,16 @@
         "net10.0-windows": {
           "framework": "net10.0-windows7.0",
           "targetAlias": "net10.0-windows",
+          "dependencies": {
+            "HidSharp": {
+              "target": "Package",
+              "version": "[2.6.4, )"
+            },
+            "hidlibrary": {
+              "target": "Package",
+              "version": "[3.3.40, )"
+            }
+          },
           "imports": [
             "net461",
             "net462",
