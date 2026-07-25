@@ -1,68 +1,51 @@
 namespace BatteryTracker;
 
 using System.Media;
-using HidLibrary;
 using Microsoft.VisualBasic;
 
 public class MyContext : ApplicationContext
 {
-    private readonly NotifyIcon _notifyIcon;
-
-    private Font _globalFont;
-
-    private readonly string _defaultFontName = "Consolas Bold";
-    private readonly SoundPlayer _lowBatterySound = new("low_power_1.wav");
     private int _lastWarnLevel = -1;
-    private HidDevice? _mouse = null;
-    private readonly SynchronizationContext _ui;
+
+    private readonly NotifyIcon _notifyIcon;
+    private Font _globalFont;
+    private readonly SoundPlayer _lowBatterySound = new("low_power_1.wav");
+    private readonly Control _ui = new();
 
     public MyContext()
     {
         // LOAD JSON
         SettingsManager.Load();
-        _globalFont = new Font(
-            SettingsManager.Settings.FontName,
-            SettingsManager.Settings.FontSize,
-            SettingsManager.Settings.FontStyle
-        );
+        _globalFont = SettingsManager.Settings.GlobalFont;
+        _ui.CreateControl();
 
         // SET UP NOTIFY ICON
         var contextMenu = new ContextMenuStrip();
-        contextMenu.Items.Add("Exit", null, Exit_Click);
         contextMenu.Items.Add("Change Font", null, OnChangeFont);
         contextMenu.Items.Add("Change Canvas Size", null, OnChangeCanvasSize);
+        contextMenu.Items.Add("-");
+        contextMenu.Items.Add("Exit", null, OnExit);
         _notifyIcon = new NotifyIcon
         {
-            Icon = Helper.CreateTextIcon(
-                "-1",
-                _globalFont,
-                canvasSize: SettingsManager.Settings.CanvasSize
-            ),
+            Icon = Helper.CreateTextIcon("-1", _globalFont, SettingsManager.Settings.CanvasSize),
             ContextMenuStrip = contextMenu,
             Visible = true,
         };
 
-        _ui = SynchronizationContext.Current!;
         Task.Run(ReadLoop);
     }
 
     private void OnChangeFont(object? sender, EventArgs e)
     {
-        string input;
-        int fontSize;
-        do
+        FontDialog fontDialog = new() { Font = _globalFont };
+        if (fontDialog.ShowDialog() == DialogResult.OK)
         {
-            input = Interaction.InputBox(
-                "Nhập Font Size: ",
-                "Font Size",
-                SettingsManager.Settings.FontSize.ToString()
-            );
-            if (string.IsNullOrWhiteSpace(input))
-                return;
-        } while (!int.TryParse(input, out fontSize));
-
-        SettingsManager.Settings.FontSize = fontSize;
-        SettingsManager.Save();
+            _globalFont.Dispose();
+            _globalFont = fontDialog.Font;
+            SettingsManager.Settings.GlobalFont.Dispose();
+            SettingsManager.Settings.GlobalFont = _globalFont;
+            SettingsManager.Save();
+        }
     }
 
     private void OnChangeCanvasSize(object? sender, EventArgs e)
@@ -86,95 +69,36 @@ public class MyContext : ApplicationContext
 
     private void ReadLoop()
     {
+        HIDReportReader mouseReader = new(DeviceID.M900P_VID, DeviceID.M900P_PID, "col03");
+
         while (true)
         {
-            try
-            {
-                if (_mouse == null || !_mouse.IsConnected)
-                    GetHidDevice();
-
-                var report = _mouse?.Read();
-                if (report?.Status != HidDeviceData.ReadStatus.Success)
-                    continue;
-
-                byte[] data = report.Data;
-                int reportId = data[0];
-                if (reportId != 0)
-                {
-                    // Console.WriteLine($"Report Data: [{string.Join(", ", report.Data)}]");
-                    int percent = report.Data[^1];
-                    _ui.Post(
-                        _ =>
-                        {
-                            SetBatteryPercent(percent);
-                            CheckBatteryWarning(percent);
-                        },
-                        null
-                    );
-                }
-            }
-            catch (Exception)
-            {
-                _mouse = null;
-                Thread.Sleep(2000);
-            }
-        }
-    }
-
-    private void GetHidDevice()
-    {
-        while (true)
-        {
-            try
-            {
-                var device =
-                    HidDevices
-                        .Enumerate(DeviceID.DELUX_M900_PRO_VID, DeviceID.DELUX_M900_PRO_PID)
-                        .FirstOrDefault(d =>
-                            d.DevicePath.Contains("col03", StringComparison.OrdinalIgnoreCase)
-                        )
-                    ?? throw new Exception("Device not found");
-                device.OpenDevice();
-
-                if (!device.IsConnected)
-                    throw new Exception("Device not connected");
-
-                _mouse = device;
-
-                Console.WriteLine("Connected!");
-                return;
-            }
-            catch
-            {
-                _mouse = null;
-                _ui.Post(
-                    _ =>
-                    {
-                        SetBatteryPercent(-1);
-                    },
-                    null
-                );
-                Thread.Sleep(2000);
-            }
+            var data = mouseReader.ReadReportData();
+            if (data == null)
+                _ui.BeginInvoke(() => SetBatteryPercent(-1));
+            else if (data[0] != 0)
+                _ui.BeginInvoke(() => SetBatteryPercent(data[^1]));
+            Thread.Sleep(5000);
         }
     }
 
     private void SetBatteryPercent(int percent)
     {
         string text = percent >= 100 ? "F" : percent.ToString();
-
-        using Font font = new(_defaultFontName, SettingsManager.Settings.FontSize, FontStyle.Bold);
         _notifyIcon.Icon = Helper.CreateTextIcon(
             text,
-            font,
-            canvasSize: SettingsManager.Settings.CanvasSize
+            _globalFont,
+            SettingsManager.Settings.CanvasSize
         );
+        CheckBatteryWarning(percent);
     }
 
     private void CheckBatteryWarning(int percent)
     {
         int warnLevel = -1;
 
+        if (percent < 0)
+            return;
         if (percent <= 5)
             warnLevel = 5;
         else if (percent <= 10)
@@ -194,7 +118,7 @@ public class MyContext : ApplicationContext
             _lastWarnLevel = -1;
     }
 
-    private void Exit_Click(object? sender, EventArgs e)
+    private void OnExit(object? sender, EventArgs e)
     {
         _notifyIcon.Visible = false;
         _lowBatterySound.Dispose();
